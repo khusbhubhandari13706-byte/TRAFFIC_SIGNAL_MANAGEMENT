@@ -4,7 +4,7 @@ from database.connection import get_connection
 
 
 # Lower number means higher priority.
-# This is our project's configurable simulation policy.
+
 VEHICLE_PRIORITY = {
     "AMBULANCE": 1,
     "FIRE_TRUCK": 2,
@@ -46,8 +46,7 @@ def register_emergency(queue, sequence, direction, vehicle_type, vehicle_count):
             connection = get_connection()
             cursor = connection.cursor()
 
-            # The current schema requires these incident fields.
-            # They are generated internally, not requested from the user.
+        
             location = f"{direction} direction"
             incident_type = "EMERGENCY_VEHICLE"
 

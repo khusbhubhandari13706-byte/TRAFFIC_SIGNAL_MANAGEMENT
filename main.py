@@ -1,4 +1,3 @@
-
 from queue import PriorityQueue
 
 from modules.traffic_density import add_request

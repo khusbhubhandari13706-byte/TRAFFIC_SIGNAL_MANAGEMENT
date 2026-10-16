@@ -1,0 +1,440 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TrafficFlow | Traffic Signal Manager</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="app">
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+        <div class="brand">
+            <div class="logo">TF</div>
+            <div>
+                <h2>TrafficFlow</h2>
+                <p>Signal & Resource Manager</p>
+            </div>
+        </div>
+
+        <p class="nav-heading">MAIN MENU</p>
+
+        <nav>
+            <a href="#dashboard" class="active">▦ &nbsp; Dashboard</a>
+            <a href="#density">🚦 &nbsp; Traffic Density</a>
+            <a href="#emergency">🚑 &nbsp; Emergency Vehicles</a>
+            <a href="#resources">⚙ &nbsp; Resource Allocation</a>
+            <a href="#deadlock">♻ &nbsp; Deadlock Manager</a>
+        </nav>
+
+        <div class="sidebar-status">
+            <span class="dot"></span> Demo Mode Active
+            <p>Backend not connected</p>
+        </div>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main class="main-content">
+
+        <!-- DASHBOARD -->
+        <section id="dashboard">
+            <header class="topbar">
+                <div>
+                    <p class="eyebrow">TRAFFIC CONTROL CENTER</p>
+                    <h1>Dashboard Overview</h1>
+                    <p class="subtitle">
+                        Monitor traffic, emergency vehicles and system resources.
+                    </p>
+                </div>
+                <span class="demo-tag">● DEMO MODE</span>
+            </header>
+
+            <!-- STATISTICS -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon">🚦</div>
+                    <p>Active Intersections</p>
+                    <h2>04</h2>
+                    <span class="green-text">All operational</span>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon">🚗</div>
+                    <p>Traffic Density</p>
+                    <h2>Medium</h2>
+                    <span class="yellow-text">Monitoring traffic</span>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon">🚑</div>
+                    <p>Emergency Requests</p>
+                    <h2>01</h2>
+                    <span class="red-text">Priority enabled</span>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon">♻</div>
+                    <p>Deadlocks Detected</p>
+                    <h2>00</h2>
+                    <span class="green-text">No deadlock in demo</span>
+                </div>
+            </div>
+
+            <!-- TRAFFIC SIGNAL MONITOR -->
+            <div class="content-grid">
+                <div class="panel">
+                    <div class="panel-heading">
+                        <div>
+                            <h3>Traffic Signal Monitor</h3>
+                            <p>Four-way intersection preview</p>
+                        </div>
+                        <span class="tag">SIMULATED</span>
+                    </div>
+
+                    <div class="intersection">
+                        <div class="horizontal-road"></div>
+                        <div class="vertical-road"></div>
+                        <div class="horizontal-line"></div>
+                        <div class="vertical-line"></div>
+
+                        <span class="road-label north">NORTH</span>
+                        <span class="road-label south">SOUTH</span>
+                        <span class="road-label east">EAST</span>
+                        <span class="road-label west">WEST</span>
+
+                        <div class="traffic-light">
+                            <span class="light green"></span>
+                            <span class="light red"></span>
+                            <span class="light red"></span>
+                            <span class="light red"></span>
+                        </div>
+                    </div>
+
+                    <div class="signal-row">
+                        <span>North Avenue</span>
+                        <strong class="green-text">GREEN</strong>
+                        <span>25 sec</span>
+                    </div>
+                    <div class="signal-row">
+                        <span>East Boulevard</span>
+                        <strong class="red-text">RED</strong>
+                        <span>Waiting</span>
+                    </div>
+                    <div class="signal-row">
+                        <span>West Street</span>
+                        <strong class="red-text">RED</strong>
+                        <span>Waiting</span>
+                    </div>
+                    <div class="signal-row">
+                        <span>South Road</span>
+                        <strong class="red-text">RED</strong>
+                        <span>Waiting</span>
+                    </div>
+                </div>
+
+                <!-- ACTIVITY PANEL -->
+                <div class="panel">
+                    <div class="panel-heading">
+                        <div>
+                            <h3>Recent Activity</h3>
+                            <p>Sample system events</p>
+                        </div>
+                    </div>
+
+                    <div class="activity">
+                        <div class="activity-icon">🚦</div>
+                        <div>
+                            <h4>Signal Updated</h4>
+                            <p>North Avenue turned green.</p>
+                            <small>Traffic density module</small>
+                        </div>
+                    </div>
+
+                    <div class="activity">
+                        <div class="activity-icon">🚑</div>
+                        <div>
+                            <h4>Emergency Request</h4>
+                            <p>Ambulance priority enabled.</p>
+                            <small>Emergency module</small>
+                        </div>
+                    </div>
+
+                    <div class="activity">
+                        <div class="activity-icon">⚙</div>
+                        <div>
+                            <h4>Resource Allocated</h4>
+                            <p>Resource assigned to P-14.</p>
+                            <small>Resource module</small>
+                        </div>
+                    </div>
+
+                    <div class="activity">
+                        <div class="activity-icon">✓</div>
+                        <div>
+                            <h4>Deadlock Check</h4>
+                            <p>No cycle in sample data.</p>
+                            <small>Deadlock module</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MODULE CARDS -->
+            <h2 class="section-title">Project Modules</h2>
+
+            <div class="module-grid">
+                <a href="#density" class="module-card">
+                    <div class="module-icon">🚦</div>
+                    <h3>Traffic Density</h3>
+                    <p>Monitor traffic levels and signal timing.</p>
+                    <span>Explore module →</span>
+                </a>
+
+                <a href="#emergency" class="module-card">
+                    <div class="module-icon">🚑</div>
+                    <h3>Emergency Vehicles</h3>
+                    <p>Manage emergency requests and priority.</p>
+                    <span>Explore module →</span>
+                </a>
+
+                <a href="#resources" class="module-card">
+                    <div class="module-icon">⚙</div>
+                    <h3>Resource Allocation</h3>
+                    <p>View processes and resource status.</p>
+                    <span>Explore module →</span>
+                </a>
+
+                <a href="#deadlock" class="module-card">
+                    <div class="module-icon">♻</div>
+                    <h3>Deadlock Manager</h3>
+                    <p>View deadlock detection and recovery status.</p>
+                    <span>Explore module →</span>
+                </a>
+            </div>
+        </section>
+
+        <!-- MODULE 1: TRAFFIC DENSITY -->
+        <section id="density" class="module-section">
+            <p class="eyebrow">MODULE 01</p>
+            <h1>Traffic Density Management</h1>
+            <p class="subtitle">Monitor traffic and manage signal timing.</p>
+
+            <div class="module-grid">
+                <div class="panel">
+                    <h3>Traffic Density</h3>
+                    <p class="subtitle">North Avenue</p>
+                    <h2 class="large-value yellow-text">MEDIUM</h2>
+                    <p>Sample vehicle count: 24</p>
+                    <div class="progress">
+                        <div class="progress-medium"></div>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <h3>Signal Timing</h3>
+                    <p class="subtitle">Illustrative timing configuration</p>
+                    <h2 class="large-value">25 Seconds</h2>
+                    <p>Suggested green signal duration</p>
+                </div>
+            </div>
+
+            <div class="panel info-panel">
+                <h3>Density Categories</h3>
+                <div class="signal-row">
+                    <span>Low Density</span>
+                    <strong class="green-text">15 seconds</strong>
+                </div>
+                <div class="signal-row">
+                    <span>Medium Density</span>
+                    <strong class="yellow-text">25 seconds</strong>
+                </div>
+                <div class="signal-row">
+                    <span>High Density</span>
+                    <strong class="red-text">40 seconds</strong>
+                </div>
+                <p class="note">Demo values only. Live sensor data is not connected.</p>
+            </div>
+        </section>
+
+        <!-- MODULE 2: EMERGENCY VEHICLES -->
+        <section id="emergency" class="module-section">
+            <p class="eyebrow">MODULE 02</p>
+            <h1>Emergency Vehicle Management</h1>
+            <p class="subtitle">Monitor emergency vehicles and priority requests.</p>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <p>Pending Requests</p>
+                    <h2>01</h2>
+                </div>
+                <div class="stat-card">
+                    <p>Priority Vehicles</p>
+                    <h2>01</h2>
+                </div>
+            </div>
+
+            <div class="panel">
+                <h3>Emergency Vehicle Queue</h3>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Vehicle ID</th>
+                                <th>Vehicle Type</th>
+                                <th>Approach Road</th>
+                                <th>Priority</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>EV-101</td>
+                                <td>Ambulance</td>
+                                <td>East Boulevard</td>
+                                <td><span class="badge danger">Critical</span></td>
+                                <td><span class="badge warning">Pending</span></td>
+                            </tr>
+                            <tr>
+                                <td>EV-102</td>
+                                <td>Fire Engine</td>
+                                <td>North Avenue</td>
+                                <td><span class="badge warning">High</span></td>
+                                <td><span class="badge success">Standby</span></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p class="note">Requests are illustrative sample data.</p>
+            </div>
+        </section>
+
+        <!-- MODULE 3: RESOURCE ALLOCATION -->
+        <section id="resources" class="module-section">
+            <p class="eyebrow">MODULE 03</p>
+            <h1>Resource Allocation</h1>
+            <p class="subtitle">Monitor process requests and allocated resources.</p>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <p>Total Processes</p>
+                    <h2>04</h2>
+                </div>
+                <div class="stat-card">
+                    <p>Allocated Resources</p>
+                    <h2>02</h2>
+                </div>
+                <div class="stat-card">
+                    <p>Waiting Processes</p>
+                    <h2>02</h2>
+                </div>
+            </div>
+
+            <div class="panel">
+                <h3>Process Resource Table</h3>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Process ID</th>
+                                <th>Requested Resource</th>
+                                <th>Allocated Resource</th>
+                                <th>Process Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>P-12</td>
+                                <td>R-01</td>
+                                <td>R-02</td>
+                                <td><span class="badge success">Running</span></td>
+                            </tr>
+                            <tr>
+                                <td>P-14</td>
+                                <td>R-03</td>
+                                <td>R-02</td>
+                                <td><span class="badge warning">Waiting</span></td>
+                            </tr>
+                            <tr>
+                                <td>P-17</td>
+                                <td>R-02</td>
+                                <td>—</td>
+                                <td><span class="badge warning">Waiting</span></td>
+                            </tr>
+                            <tr>
+                                <td>P-20</td>
+                                <td>R-04</td>
+                                <td>R-04</td>
+                                <td><span class="badge success">Running</span></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- MODULE 4: DEADLOCK -->
+        <section id="deadlock" class="module-section">
+            <p class="eyebrow">MODULE 04</p>
+            <h1>Deadlock Detection & Recovery</h1>
+            <p class="subtitle">Inspect process dependencies and deadlock status.</p>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <p>Processes Monitored</p>
+                    <h2>04</h2>
+                </div>
+                <div class="stat-card">
+                    <p>Deadlock Cycles</p>
+                    <h2>00</h2>
+                </div>
+                <div class="stat-card">
+                    <p>Recovery Actions</p>
+                    <h2>00</h2>
+                </div>
+            </div>
+
+            <div class="panel">
+                <h3>Process Dependency Preview</h3>
+                <p class="subtitle">Illustrative resource dependency diagram</p>
+
+                <div class="graph">
+                    <div class="process-node">
+                        <strong>P-12</strong>
+                        <span>Process</span>
+                    </div>
+                    <div class="arrow">→</div>
+                    <div class="resource-node">
+                        <strong>R-02</strong>
+                        <span>Resource</span>
+                    </div>
+                    <div class="arrow">→</div>
+                    <div class="process-node">
+                        <strong>P-14</strong>
+                        <span>Process</span>
+                    </div>
+                </div>
+
+                <div class="result-status">
+                    <span class="dot"></span>
+                    No deadlock detected in sample data.
+                </div>
+                <p class="note">
+                    This is a static preview, not the output of your deadlock detection code.
+                </p>
+            </div>
+        </section>
+
+        <footer>
+            TrafficFlow · Traffic Signal and Emergency Resource Manager
+            <span>Academic PBL Prototype · Frontend Only</span>
+        </footer>
+
+    </main>
+</div>
+
+</body>
+</html>
