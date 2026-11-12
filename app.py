@@ -2,7 +2,7 @@ from flask import Flask, render_template, jsonify, request
 from queue import PriorityQueue, Empty
 from datetime import datetime
 import threading
-
+import time
 from database.connection import get_connection
 from modules.traffic_density import add_request
 from modules.emergency_priority import register_emergency
@@ -60,7 +60,11 @@ deadlock_demo = {
     "process_ids": [],
     "resource_ids": [],
     "resource_names": [],
-    "cycle": []
+    "cycle": [],
+    "phase": "IDLE",
+    "survivor_id": None,
+    "victim_id": None,
+    "restarted_victim_id": None
 }
 
 deadlock_demo_lock = threading.Lock()
@@ -718,10 +722,14 @@ def start_deadlock_demo():
         deadlock_demo.update({
             "active": True,
             "status": "DETECTED",
+            "phase": "DETECTED",
             "process_ids": [p1, p2],
             "resource_ids": [r1, r2],
             "resource_names": ["R1", "R2"],
-            "cycle": cycle
+            "cycle": cycle,
+            "survivor_id": p1,
+            "victim_id": cycle[-2],
+            "restarted_victim_id": None
         })
 
         return jsonify({
@@ -753,29 +761,31 @@ def recover_deadlock_api():
                 "error": "No active deadlock demonstration."
             }), 409
 
+        if deadlock_demo["phase"] != "DETECTED":
+            return jsonify({
+                "error": "Deadlock recovery has already been performed."
+            }), 409
+
         cycle = deadlock_demo["cycle"]
         process_ids = deadlock_demo["process_ids"]
 
-        victim_id = cycle[-2]
+        victim_id = deadlock_demo["victim_id"]
+        survivor_id = deadlock_demo["survivor_id"]
 
-        # Run the existing recovery algorithm.
+        # Execute the existing deadlock recovery algorithm.
         recover_deadlock(cycle)
 
         # Verify that the circular wait has disappeared.
         remaining_cycle = detect_deadlock(process_ids)
 
-        if remaining_cycle is None:
+        if remaining_cycle is None or remaining_cycle:
             return jsonify({
-                "error": "Could not verify deadlock recovery."
-            }), 500
-
-        if remaining_cycle:
-            return jsonify({
-                "error": "Deadlock still exists after recovery.",
+                "error": "Could not verify deadlock recovery.",
                 "cycle": remaining_cycle
             }), 500
 
         victim_status = get_process_status(victim_id)
+        survivor_status = get_process_status(survivor_id)
 
         if victim_status != "ABORTED":
             return jsonify({
@@ -783,23 +793,179 @@ def recover_deadlock_api():
                 "victim_status": victim_status
             }), 500
 
-        deadlock_demo["active"] = False
+        if survivor_status != "RUNNING":
+            return jsonify({
+                "error": "Survivor process is not ready to continue.",
+                "survivor_status": survivor_status
+            }), 500
+
         deadlock_demo["status"] = "RECOVERED"
+        deadlock_demo["phase"] = "SURVIVOR_READY"
 
         return jsonify({
             "message": "Deadlock successfully recovered!",
             "status": "RECOVERED",
+            "phase": "SURVIVOR_READY",
             "victim_id": victim_id,
             "victim_status": victim_status,
+            "survivor_id": survivor_id,
+            "survivor_status": survivor_status,
             "cycle": cycle,
-            "remaining_cycle": [],
-            "process_status": {
-                str(pid): get_process_status(pid)
-                for pid in process_ids
-            }
+            "remaining_cycle": []
+        }), 200
+
+@app.route("/api/deadlock/complete-survivor", methods=["POST"])
+def complete_deadlock_survivor():
+
+    with deadlock_demo_lock:
+
+        if not deadlock_demo["active"]:
+            return jsonify({
+                "error": "No active deadlock demonstration."
+            }), 409
+
+        if deadlock_demo["phase"] != "SURVIVOR_READY":
+            return jsonify({
+                "error": "Survivor is not ready to complete."
+            }), 409
+
+        survivor_id = deadlock_demo["survivor_id"]
+
+        # P1 completes its journey and releases all resources.
+        success = finish_process(survivor_id, "COMPLETED")
+
+        if not success:
+            return jsonify({
+                "error": "Could not complete survivor process."
+            }), 500
+
+        survivor_status = get_process_status(survivor_id)
+
+        if survivor_status != "COMPLETED":
+            return jsonify({
+                "error": "Survivor process completion could not be verified.",
+                "status": survivor_status
+            }), 500
+
+        deadlock_demo["phase"] = "SURVIVOR_COMPLETED"
+
+        return jsonify({
+            "message": "Survivor completed and released all resources.",
+            "phase": "SURVIVOR_COMPLETED",
+            "survivor_id": survivor_id,
+            "survivor_status": survivor_status
         }), 200
 
 
+@app.route("/api/deadlock/restart-victim", methods=["POST"])
+def restart_deadlock_victim():
+
+    with deadlock_demo_lock:
+
+        if not deadlock_demo["active"]:
+            return jsonify({
+                "error": "No active deadlock demonstration."
+            }), 409
+
+        if deadlock_demo["phase"] != "SURVIVOR_COMPLETED":
+            return jsonify({
+                "error": "Survivor must complete before restarting the victim."
+            }), 409
+
+        r1, r2 = deadlock_demo["resource_ids"]
+        original_victim_id = deadlock_demo["victim_id"]
+
+        # Create a NEW process for restarting the aborted victim.
+        restarted_id = create_process(
+            f"BROWSER_DL_P2_RESTART_{original_victim_id}_{time.time_ns()}"
+        )
+
+        # Acquire the resources released by P1.
+        got_r2 = request_resource(restarted_id, r2)
+        got_r1 = request_resource(restarted_id, r1)
+
+        # Both resources must be allocated successfully.
+        if got_r2 is not True or got_r1 is not True:
+
+            # Clean up any partial allocation.
+            finish_process(restarted_id, "ABORTED")
+
+            return jsonify({
+                "error": "Restarted process could not acquire all resources.",
+                "restarted_process_id": restarted_id,
+                "r2_acquired": got_r2,
+                "r1_acquired": got_r1
+            }), 500
+
+        deadlock_demo["restarted_victim_id"] = restarted_id
+        deadlock_demo["phase"] = "VICTIM_RESTARTED"
+
+        return jsonify({
+            "message": "Victim successfully restarted with a new process ID.",
+            "phase": "VICTIM_RESTARTED",
+            "original_victim_id": original_victim_id,
+            "original_victim_status": get_process_status(original_victim_id),
+            "restarted_process_id": restarted_id,
+            "restarted_process_status": get_process_status(restarted_id),
+            "resources_acquired": ["R2", "R1"]
+        }), 200
+
+
+@app.route("/api/deadlock/complete-restart", methods=["POST"])
+def complete_restarted_victim():
+
+    with deadlock_demo_lock:
+
+        if not deadlock_demo["active"]:
+            return jsonify({
+                "error": "No active deadlock demonstration."
+            }), 409
+
+        if deadlock_demo["phase"] != "VICTIM_RESTARTED":
+            return jsonify({
+                "error": "Victim has not been restarted yet."
+            }), 409
+
+        restarted_id = deadlock_demo["restarted_victim_id"]
+
+        # Restarted P2 completes its journey and releases resources.
+        success = finish_process(restarted_id, "COMPLETED")
+
+        if not success:
+            return jsonify({
+                "error": "Could not complete restarted victim process."
+            }), 500
+
+        restarted_status = get_process_status(restarted_id)
+
+        if restarted_status != "COMPLETED":
+            return jsonify({
+                "error": "Restarted process completion could not be verified.",
+                "status": restarted_status
+            }), 500
+
+        deadlock_demo["phase"] = "RECOVERED"
+        deadlock_demo["status"] = "RECOVERED"
+        deadlock_demo["active"] = False
+
+        return jsonify({
+            "message": "Deadlock demonstration completed successfully!",
+            "phase": "RECOVERED",
+            "original_survivor": {
+                "id": deadlock_demo["survivor_id"],
+                "status": get_process_status(deadlock_demo["survivor_id"])
+            },
+            "original_victim": {
+                "id": deadlock_demo["victim_id"],
+                "status": get_process_status(deadlock_demo["victim_id"])
+            },
+            "restarted_victim": {
+                "id": restarted_id,
+                "status": restarted_status
+            }
+        }), 200
+
+    
 @app.route("/api/deadlock/status", methods=["GET"])
 def deadlock_status_api():
 

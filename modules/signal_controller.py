@@ -1225,23 +1225,61 @@ class SignalController:
     # DEADLOCK DETECTION / RECOVERY
     # --------------------------------------------------
     
+    
     def check_deadlock_and_recover(self):
         """
-        Detect deadlock without automatically recovering it.
-        Recovery will be performed through the dashboard button.
+        Detect deadlocks only among active traffic processes.
+        Browser demo and standalone test processes are excluded.
+        Recovery is performed through the dashboard button.
         """
 
-        cycle = detect_deadlock()
+        connection = None
+        cursor = None
+
+        try:
+            connection = get_connection()
+            cursor = connection.cursor()
+
+            # Fetch only active normal and emergency traffic processes.
+            cursor.execute("""
+                SELECT process_id
+                FROM os_processes
+                WHERE status IN ('RUNNING', 'WAITING')
+                AND (
+                    LEFT(process_name, 15) = 'NORMAL_TRAFFIC_'
+                    OR LEFT(process_name, 10) = 'EMERGENCY_'
+                )
+            """)
+
+            process_ids = [row[0] for row in cursor.fetchall()]
+
+        except Exception as error:
+            print("Could not fetch active traffic processes:", error)
+            return None
+
+        finally:
+            if cursor:
+                cursor.close()
+            if connection:
+                connection.close()
+
+        # No active traffic processes means nothing to check.
+        if not process_ids:
+            print("Deadlock check: No active traffic processes.")
+            return []
+
+        # Check only the selected traffic processes.
+        cycle = detect_deadlock(process_ids)
 
         if cycle is None:
             print("Deadlock detection failed.")
             return None
 
         if cycle:
-            print("DEADLOCK DETECTED:", cycle)
+            print("TRAFFIC DEADLOCK DETECTED:", cycle)
             return cycle
 
-        print("Deadlock check: No deadlock detected.")
+        print("Traffic deadlock check: No deadlock detected.")
         return []
 
     # --------------------------------------------------

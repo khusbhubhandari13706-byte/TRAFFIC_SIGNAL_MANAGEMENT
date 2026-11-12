@@ -1,5 +1,8 @@
 from database.connection import get_connection
-
+from modules.bankers_algorithm import (
+    TRAFFIC_RESOURCES,
+    check_request_safety
+)
 from datetime import datetime
 def test_database_connection():
     connection = None
@@ -106,113 +109,260 @@ def create_resource(resource_name, total_instances=1):
 
 
 
+
 def request_resource(process_id, resource_id):
-    """Request a resource. Return True if granted, False if waiting, None on error."""
+    """
+    Request a resource.
+    True  = granted
+    False = waiting (unavailable or unsafe)
+    None  = error
+    """
+
     connection = None
     cursor = None
+    lock_acquired = False
 
     try:
         connection = get_connection()
         cursor = connection.cursor()
 
+        # Serialize resource requests during the safety check
+        # and allocation operation.
+        cursor.execute(
+            "SELECT GET_LOCK(%s, 10)",
+            ("TRAFFIC_BANKERS_LOCK",)
+        )
+
+        lock_result = cursor.fetchone()
+
+        if not lock_result or lock_result[0] != 1:
+            print("Could not acquire Banker's allocation lock.")
+            return None
+
+        lock_acquired = True
+
+        # 1. Verify that the process exists and is active.
+        cursor.execute(
+            """
+            SELECT status
+            FROM os_processes
+            WHERE process_id = %s
+            """,
+            (process_id,)
+        )
+        process = cursor.fetchone()
+
+        if not process or process[0] in ("COMPLETED", "ABORTED"):
+            return None
+
+        # 2. Identify the requested resource.
+        cursor.execute(
+            """
+            SELECT resource_name, total_instances
+            FROM os_resources
+            WHERE os_resource_id = %s
+            """,
+            (resource_id,)
+        )
+        resource = cursor.fetchone()
+
+        if not resource:
+            return None
+
+        resource_name, total_instances = resource
+
+        # 3. Check whether this process already has a request.
+        cursor.execute(
+            """
+            SELECT request_id, request_status
+            FROM os_resource_requests
+            WHERE process_id = %s
+              AND os_resource_id = %s
+              AND request_status IN ('WAITING', 'GRANTED')
+            LIMIT 1
+            """,
+            (process_id, resource_id)
+        )
+        existing_request = cursor.fetchone()
+
+        if existing_request:
+            if existing_request[1] == "GRANTED":
+                return True
+
+        # 4. Run Banker's Algorithm for actual traffic resources.
+        banker_status = "SAFE"
+
+        if resource_name in TRAFFIC_RESOURCES:
+
+            decision = check_request_safety(
+                process_id,
+                resource_name,
+                request_amount=1
+            )
+
+            banker_status = decision["status"]
+
+            if banker_status not in ("SAFE", "UNSAFE", "UNAVAILABLE"):
+                print(
+                    f"Banker's Algorithm error for P{process_id}: "
+                    f"{banker_status}"
+                )
+                return None
+
+        # 5. Begin the actual database transaction.
+        connection.commit()
         connection.start_transaction()
 
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT status
             FROM os_processes
             WHERE process_id = %s
             FOR UPDATE
-        """, (process_id,))
+            """,
+            (process_id,)
+        )
         process = cursor.fetchone()
 
         if not process or process[0] in ("COMPLETED", "ABORTED"):
             connection.rollback()
             return None
 
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT total_instances
             FROM os_resources
             WHERE os_resource_id = %s
             FOR UPDATE
-        """, (resource_id,))
+            """,
+            (resource_id,)
+        )
         resource = cursor.fetchone()
 
         if not resource:
             connection.rollback()
             return None
 
-        cursor.execute("""
-            SELECT request_status
-            FROM os_resource_requests
-            WHERE process_id = %s
-              AND os_resource_id = %s
-              AND request_status IN ('WAITING', 'GRANTED')
-            LIMIT 1
-        """, (process_id, resource_id))
-        existing_request = cursor.fetchone()
-
-        if existing_request:
-            connection.commit()
-            return existing_request[0] == "GRANTED"
-
-        cursor.execute("""
+        # 6. Check actual resource availability again.
+        cursor.execute(
+            """
             SELECT COUNT(*)
             FROM os_resource_allocations
             WHERE os_resource_id = %s
-        """, (resource_id,))
+            """,
+            (resource_id,)
+        )
         allocated = cursor.fetchone()[0]
 
-        cursor.execute("""
-            INSERT INTO os_resource_requests
-                (process_id, os_resource_id, request_status)
-            VALUES (%s, %s, 'WAITING')
-        """, (process_id, resource_id))
+        available = allocated < resource[0]
 
-        if allocated < resource[0]:
-            cursor.execute("""
+        # 7. Grant only if both conditions are satisfied.
+        if banker_status == "SAFE" and available:
+
+            cursor.execute(
+                """
                 INSERT INTO os_resource_allocations
                     (process_id, os_resource_id)
                 VALUES (%s, %s)
-            """, (process_id, resource_id))
+                """,
+                (process_id, resource_id)
+            )
 
-            cursor.execute("""
-                UPDATE os_resource_requests
-                SET request_status = 'GRANTED'
-                WHERE process_id = %s
-                  AND os_resource_id = %s
-                  AND request_status = 'WAITING'
-            """, (process_id, resource_id))
+            if existing_request:
+                cursor.execute(
+                    """
+                    UPDATE os_resource_requests
+                    SET request_status = 'GRANTED'
+                    WHERE request_id = %s
+                    """,
+                    (existing_request[0],)
+                )
+            else:
+                cursor.execute(
+                    """
+                    INSERT INTO os_resource_requests
+                        (process_id, os_resource_id, request_status)
+                    VALUES (%s, %s, 'GRANTED')
+                    """,
+                    (process_id, resource_id)
+                )
 
-            cursor.execute("""
+            cursor.execute(
+                """
                 UPDATE os_processes
                 SET status = 'RUNNING'
                 WHERE process_id = %s
-            """, (process_id,))
+                """,
+                (process_id,)
+            )
 
             connection.commit()
+
+            print(
+                f"Resource granted to P{process_id}: {resource_name} "
+                f"| Banker's status: {banker_status}"
+            )
             return True
 
-        cursor.execute("""
+        # 8. Unsafe or unavailable requests remain waiting.
+        if existing_request:
+            cursor.execute(
+                """
+                UPDATE os_resource_requests
+                SET request_status = 'WAITING'
+                WHERE request_id = %s
+                """,
+                (existing_request[0],)
+            )
+        else:
+            cursor.execute(
+                """
+                INSERT INTO os_resource_requests
+                    (process_id, os_resource_id, request_status)
+                VALUES (%s, %s, 'WAITING')
+                """,
+                (process_id, resource_id)
+            )
+
+        cursor.execute(
+            """
             UPDATE os_processes
             SET status = 'WAITING'
             WHERE process_id = %s
-        """, (process_id,))
+            """,
+            (process_id,)
+        )
 
         connection.commit()
+
+        print(
+            f"Resource not granted to P{process_id}: {resource_name} "
+            f"| Banker's status: {banker_status}"
+        )
         return False
 
     except Exception as error:
         if connection:
             connection.rollback()
+
         print("Resource request error:", error)
         return None
 
     finally:
+        if lock_acquired and cursor and connection:
+            try:
+                cursor.execute(
+                    "SELECT RELEASE_LOCK(%s)",
+                    ("TRAFFIC_BANKERS_LOCK",)
+                )
+                cursor.fetchone()  # Consume the SELECT result.
+            except Exception as error:
+                print("Could not release Banker's lock:", error)
         if cursor:
             cursor.close()
+
         if connection:
             connection.close()
-
 
 
 def detect_deadlock(process_ids=None):
@@ -368,7 +518,7 @@ def recover_deadlock(cycle=None):
 
     connection = None
     cursor = None
-
+    waiting_candidates = []
     try:
         connection = get_connection()
         connection.start_transaction()
@@ -434,68 +584,42 @@ def recover_deadlock(cycle=None):
             (victim_id,)
         )
 
-        # 6. Grant released resources to waiting processes,
-        # following request order (FCFS).
+        
+        # 6. Collect waiting processes for the released resources.
+        # Actual allocation will be performed after commit through
+        # request_resource(), which checks Banker's safety.
+
         for resource_id in sorted(released_resources):
-            cursor.execute(
-                """
-                SELECT total_instances
-                FROM os_resources
-                WHERE os_resource_id = %s
-                FOR UPDATE
-                """,
-                (resource_id,)
-            )
-            resource = cursor.fetchone()
-
-            if resource is None:
-                continue
-
-            total_instances = resource[0]
 
             cursor.execute(
                 """
-                SELECT COUNT(*)
-                FROM os_resource_allocations
+                SELECT request_id, process_id
+                FROM os_resource_requests
                 WHERE os_resource_id = %s
+                AND request_status = 'WAITING'
+                ORDER BY request_id
                 """,
                 (resource_id,)
             )
-            allocated = cursor.fetchone()[0]
 
-            while allocated < total_instances:
-                cursor.execute(
-                    """
-                    SELECT request_id, process_id
-                    FROM os_resource_requests
-                    WHERE os_resource_id = %s
-                      AND request_status = 'WAITING'
-                    ORDER BY request_id
-                    LIMIT 1
-                    FOR UPDATE
-                    """,
-                    (resource_id,)
-                )
-                waiting = cursor.fetchone()
+            waiting_requests = cursor.fetchall()
 
-                if waiting is None:
-                    break
-
-                request_id, process_id = waiting
+            for waiting_request_id, waiting_process_id in waiting_requests:
 
                 cursor.execute(
                     """
                     SELECT status
                     FROM os_processes
                     WHERE process_id = %s
-                    FOR UPDATE
                     """,
-                    (process_id,)
+                    (waiting_process_id,)
                 )
-                process = cursor.fetchone()
 
-                if process is None or process[0] in (
-                    "COMPLETED", "ABORTED"
+                waiting_process = cursor.fetchone()
+
+                if (
+                    waiting_process is None
+                    or waiting_process[0] in ("COMPLETED", "ABORTED")
                 ):
                     cursor.execute(
                         """
@@ -503,54 +627,32 @@ def recover_deadlock(cycle=None):
                         SET request_status = 'CANCELLED'
                         WHERE request_id = %s
                         """,
-                        (request_id,)
+                        (waiting_request_id,)
                     )
                     continue
 
-                cursor.execute(
-                    """
-                    INSERT INTO os_resource_allocations
-                        (process_id, os_resource_id)
-                    VALUES (%s, %s)
-                    """,
-                    (process_id, resource_id)
+                waiting_candidates.append(
+                    (waiting_process_id, resource_id)
                 )
 
-                cursor.execute(
-                    """
-                    UPDATE os_resource_requests
-                    SET request_status = 'GRANTED'
-                    WHERE request_id = %s
-                    """,
-                    (request_id,)
-                )
-
-                # Set RUNNING only if no other requests are waiting.
-                cursor.execute(
-                    """
-                    SELECT COUNT(*)
-                    FROM os_resource_requests
-                    WHERE process_id = %s
-                      AND request_status = 'WAITING'
-                    """,
-                    (process_id,)
-                )
-                remaining_waits = cursor.fetchone()[0]
-
-                if remaining_waits == 0:
-                    cursor.execute(
-                        """
-                        UPDATE os_processes
-                        SET status = 'RUNNING'
-                        WHERE process_id = %s
-                        """,
-                        (process_id,)
-                    )
-
-                allocated += 1
 
         connection.commit()
 
+        # 7. Retry waiting requests through Banker's Algorithm.
+        for waiting_process_id, resource_id in waiting_candidates:
+
+            granted = request_resource(waiting_process_id, resource_id)
+
+            if granted:
+                print(
+                    f"Waiting process P{waiting_process_id} "
+                    f"received resource {resource_id} safely."
+                )
+            else:
+                print(
+                    f"Process P{waiting_process_id} remains waiting "
+                    f"for resource {resource_id}."
+                )
         print(f"\nRecovery successful. Victim: P{victim_id}")
         print("Victim status: ABORTED")
         print("Released resources:", sorted(released_resources))
@@ -701,7 +803,7 @@ def finish_process(process_id, final_status="COMPLETED"):
 
     connection = None
     cursor = None
-
+    waiting_candidates = []
     try:
         connection = get_connection()
         connection.start_transaction()
@@ -762,62 +864,37 @@ def finish_process(process_id, final_status="COMPLETED"):
         )
 
         # Reconsider waiting processes for each released resource.
+        
+# Collect waiting processes for released resources.
+# Actual allocation will happen after commit through
+# request_resource(), which performs Banker's safety checking.
+
         for resource_id in sorted(released_resources):
-            cursor.execute(
-                """
-                SELECT total_instances
-                FROM os_resources
-                WHERE os_resource_id = %s
-                FOR UPDATE
-                """,
-                (resource_id,)
-            )
-            resource = cursor.fetchone()
-
-            if resource is None:
-                continue
-
-            total_instances = resource[0]
 
             cursor.execute(
                 """
-                SELECT COUNT(*)
-                FROM os_resource_allocations
+                SELECT request_id, process_id
+                FROM os_resource_requests
                 WHERE os_resource_id = %s
+                AND request_status = 'WAITING'
+                ORDER BY request_id
                 """,
                 (resource_id,)
             )
-            allocated = cursor.fetchone()[0]
 
-            while allocated < total_instances:
-                cursor.execute(
-                    """
-                    SELECT request_id, process_id
-                    FROM os_resource_requests
-                    WHERE os_resource_id = %s
-                      AND request_status = 'WAITING'
-                    ORDER BY request_id
-                    LIMIT 1
-                    FOR UPDATE
-                    """,
-                    (resource_id,)
-                )
-                waiting = cursor.fetchone()
+            waiting_requests = cursor.fetchall()
 
-                if waiting is None:
-                    break
-
-                waiting_request_id, waiting_process_id = waiting
+            for waiting_request_id, waiting_process_id in waiting_requests:
 
                 cursor.execute(
                     """
                     SELECT status
                     FROM os_processes
                     WHERE process_id = %s
-                    FOR UPDATE
                     """,
                     (waiting_process_id,)
                 )
+
                 waiting_process = cursor.fetchone()
 
                 if (
@@ -834,51 +911,28 @@ def finish_process(process_id, final_status="COMPLETED"):
                     )
                     continue
 
-                cursor.execute(
-                    """
-                    INSERT INTO os_resource_allocations
-                        (process_id, os_resource_id)
-                    VALUES (%s, %s)
-                    """,
+                waiting_candidates.append(
                     (waiting_process_id, resource_id)
                 )
 
-                cursor.execute(
-                    """
-                    UPDATE os_resource_requests
-                    SET request_status = 'GRANTED'
-                    WHERE request_id = %s
-                    """,
-                    (waiting_request_id,)
-                )
-
-                # A process can run only if no requests remain waiting.
-                cursor.execute(
-                    """
-                    SELECT COUNT(*)
-                    FROM os_resource_requests
-                    WHERE process_id = %s
-                      AND request_status = 'WAITING'
-                    """,
-                    (waiting_process_id,)
-                )
-                remaining = cursor.fetchone()[0]
-
-                if remaining == 0:
-                    cursor.execute(
-                        """
-                        UPDATE os_processes
-                        SET status = 'RUNNING'
-                        WHERE process_id = %s
-                          AND status = 'WAITING'
-                        """,
-                        (waiting_process_id,)
-                    )
-
-                allocated += 1
 
         connection.commit()
 
+        # Retry waiting requests through the Banker's safety check.
+        for waiting_process_id, resource_id in waiting_candidates:
+
+            granted = request_resource(waiting_process_id, resource_id)
+
+            if granted:
+                print(
+                    f"Waiting process P{waiting_process_id} "
+                    f"received resource {resource_id} safely."
+                )
+            else:
+                print(
+                    f"Process P{waiting_process_id} remains waiting "
+                    f"for resource {resource_id}."
+                )
         print(
             f"OS process P{process_id} marked {final_status}; "
             f"released resources: {sorted(released_resources)}"
@@ -905,7 +959,7 @@ def release_process_resources(process_id):
     """
     connection = None
     cursor = None
-
+    waiting_candidates = []
     try:
         connection = get_connection()
         connection.start_transaction()
@@ -966,60 +1020,33 @@ def release_process_resources(process_id):
             """,
             (process_id,)
         )
-        # Grant released resources to waiting processes.
+        
+        # Collect waiting processes for the released resources.
+        # Actual allocation will happen after commit through
+        # request_resource(), which checks Banker's safety.
+
         for resource_id in sorted(released_resources):
+
             cursor.execute(
                 """
-                SELECT total_instances
-                FROM os_resources
+                SELECT request_id, process_id
+                FROM os_resource_requests
                 WHERE os_resource_id = %s
-                FOR UPDATE
+                  AND request_status = 'WAITING'
+                ORDER BY request_id
                 """,
                 (resource_id,)
             )
 
-            resource = cursor.fetchone()
-            if resource is None:
-                continue
+            waiting_requests = cursor.fetchall()
 
-            total_instances = resource[0]
-
-            cursor.execute(
-                """
-                SELECT COUNT(*)
-                FROM os_resource_allocations
-                WHERE os_resource_id = %s
-                """,
-                (resource_id,)
-            )
-            allocated = cursor.fetchone()[0]
-
-            while allocated < total_instances:
-                cursor.execute(
-                    """
-                    SELECT request_id, process_id
-                    FROM os_resource_requests
-                    WHERE os_resource_id = %s
-                      AND request_status = 'WAITING'
-                    ORDER BY request_id
-                    LIMIT 1
-                    FOR UPDATE
-                    """,
-                    (resource_id,)
-                )
-
-                waiting = cursor.fetchone()
-                if waiting is None:
-                    break
-
-                waiting_request_id, waiting_process_id = waiting
+            for waiting_request_id, waiting_process_id in waiting_requests:
 
                 cursor.execute(
                     """
                     SELECT status
                     FROM os_processes
                     WHERE process_id = %s
-                    FOR UPDATE
                     """,
                     (waiting_process_id,)
                 )
@@ -1040,49 +1067,27 @@ def release_process_resources(process_id):
                     )
                     continue
 
-                cursor.execute(
-                    """
-                    INSERT INTO os_resource_allocations
-                        (process_id, os_resource_id)
-                    VALUES (%s, %s)
-                    """,
+                waiting_candidates.append(
                     (waiting_process_id, resource_id)
                 )
 
-                cursor.execute(
-                    """
-                    UPDATE os_resource_requests
-                    SET request_status = 'GRANTED'
-                    WHERE request_id = %s
-                    """,
-                    (waiting_request_id,)
-                )
-
-                cursor.execute(
-                    """
-                    SELECT COUNT(*)
-                    FROM os_resource_requests
-                    WHERE process_id = %s
-                      AND request_status = 'WAITING'
-                    """,
-                    (waiting_process_id,)
-                )
-
-                if cursor.fetchone()[0] == 0:
-                    cursor.execute(
-                        """
-                        UPDATE os_processes
-                        SET status = 'RUNNING'
-                        WHERE process_id = %s
-                          AND status = 'WAITING'
-                        """,
-                        (waiting_process_id,)
-                    )
-
-                allocated += 1
 
         connection.commit()
+                # Retry waiting requests through Banker's Algorithm.
+        for waiting_process_id, resource_id in waiting_candidates:
 
+            granted = request_resource(waiting_process_id, resource_id)
+
+            if granted:
+                print(
+                    f"Waiting process P{waiting_process_id} "
+                    f"received resource {resource_id} safely."
+                )
+            else:
+                print(
+                    f"Process P{waiting_process_id} remains waiting "
+                    f"for resource {resource_id}."
+                )
         print(
             f"Process P{process_id} paused; "
             f"released resources: {sorted(released_resources)}"

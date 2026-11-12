@@ -602,6 +602,7 @@ function setDeadlockSignals(activeDirection) {
 
 // Recover detected deadlock
 
+
 async function recoverDeadlock() {
     const button = document.getElementById("recoverDeadlock");
     const message = document.getElementById("deadlockMessage");
@@ -609,10 +610,13 @@ async function recoverDeadlock() {
     button.disabled = true;
     deadlockRecoveryRunning = true;
 
+    let recoveryStarted = false;
+
     message.textContent = "Starting deadlock recovery...";
 
-    try {
-        const response = await fetch("/api/deadlock/recover", {
+    // Helper for calling deadlock APIs.
+    async function callDeadlockAPI(url) {
+        const response = await fetch(url, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json"
@@ -623,11 +627,19 @@ async function recoverDeadlock() {
         const data = await response.json();
 
         if (!response.ok) {
-            throw new Error(data.error || data.message || "Recovery failed.");
+            throw new Error(data.error || data.message || "Request failed.");
         }
 
-        const victimId = Number(data.victim_id);
+        return data;
+    }
+
+    try {
         const processes = deadlockDemoData?.processes || [];
+
+        const data = await callDeadlockAPI("/api/deadlock/recover");
+        recoveryStarted = true;
+
+        const victimId = Number(data.victim_id);
 
         const victim = processes.find(
             p => Number(p.id) === victimId
@@ -645,75 +657,115 @@ async function recoverDeadlock() {
             ? document.getElementById(`deadlock-car-${survivor.id}`)
             : null;
 
-        const victimName = victim?.name || "Unknown";
-        const survivorName = survivor?.name || "Unknown";
-
-        // STEP 1: Show which process is aborted.
-        message.textContent =
-            `Victim selected: ${victimName} (P2). Aborting process and releasing resources...`;
-
-        if (victimCar) {
-            victimCar.classList.add("victim-aborted");
+        if (!victimCar || !survivorCar) {
+            throw new Error("Deadlock demo vehicles not found.");
         }
+
+        const victimName = victim?.name || "P2";
+        const survivorName = survivor?.name || "P1";
+
+        // STEP 1: Abort original P2.
+        message.textContent =
+            `${victimName} selected as victim. Aborting process...`;
+
+        victimCar.classList.add("victim-aborted");
 
         await new Promise(resolve => setTimeout(resolve, 800));
 
-        // STEP 2: Give green signal to the survivor's approach.
-        // P1 travels from NORTH to SOUTH.
+        // STEP 2: P1 gets the green signal.
         message.textContent =
-            `Victim ${victimName} aborted. Resources released. ${survivorName} can now proceed.`;
+            `${victimName} aborted. ${survivorName} can now proceed.`;
 
         setDeadlockSignals("NORTH");
 
         await new Promise(resolve => setTimeout(resolve, 500));
 
-        // STEP 3: Move the surviving vehicle.
-        if (survivorCar) {
-            const survivorIndex = processes.findIndex(
-                p => Number(p.id) === Number(survivor.id)
-            );
-
-            if (survivorIndex === 0) {
-                // P1 starts from North and moves towards South.
-                survivorCar.style.setProperty("top", "130px");
-                setDeadlockSignals("NORTH");
-                survivorCar.classList.add("demo-move-south");
-            } else {
-                // P2 starts from South and moves towards North.
-                survivorCar.style.setProperty("top", "340px");
-                setDeadlockSignals("SOUTH");
-                survivorCar.classList.add("demo-move-north");
-            }
-        }
+        // STEP 3: Move P1 from North to South.
+        survivorCar.style.setProperty("top", "130px");
+        survivorCar.classList.add("demo-move-south");
 
         message.textContent =
-            `${survivorName} is moving through the intersection.`;
+            `${survivorName} is crossing the intersection...`;
 
         await new Promise(resolve => setTimeout(resolve, 1900));
 
-        // STEP 4: Finish visual demo and restore normal signals.
+        // STEP 4: P1 completes and releases resources.
+        message.textContent =
+            `${survivorName} completed. Releasing its resources...`;
+
+        await callDeadlockAPI("/api/deadlock/complete-survivor");
+
+        survivorCar.remove();
+
+        // STEP 5: Restart original P2 with a NEW process ID.
+        message.textContent =
+            "Restarting P2 with a new process ID...";
+
+        const restartData = await callDeadlockAPI(
+            "/api/deadlock/restart-victim"
+        );
+
+        const restartedId = Number(restartData.restarted_process_id);
+
+        // Reuse the old P2 vehicle visually.
+        victimCar.classList.remove(
+            "victim-aborted",
+            "demo-move-south",
+            "demo-move-north"
+        );
+
+        victimCar.id = `deadlock-car-${restartedId}`;
+
+        // P2 starts again from the South approach.
+        victimCar.style.setProperty("top", "340px");
+
+        setDeadlockSignals("SOUTH");
+
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        // STEP 6: Restarted P2 moves from South to North.
+        victimCar.classList.add("demo-move-north");
+
+        message.textContent =
+            `Restarted P2 (Process ${restartedId}) is crossing...`;
+
+        await new Promise(resolve => setTimeout(resolve, 1900));
+
+        // STEP 7: Complete restarted P2.
+        message.textContent =
+            "Restarted P2 completed. Releasing resources...";
+
+        const finalData = await callDeadlockAPI(
+            "/api/deadlock/complete-restart"
+        );
+
+        // STEP 8: Finish demo and restore normal traffic.
         clearDeadlockScene();
 
         await refreshDeadlockStatus();
 
-        deadlockRecoveryRunning = false;
-        await updateSignals();
+        document.getElementById("deadlockState").textContent =
+            finalData.phase;
 
         message.textContent =
-            `${data.message} Victim: ${victimName} (ABORTED). ` +
-            `${survivorName} completed movement. Deadlock recovered.`;
+            `Deadlock demonstration completed! Original P2: ABORTED. ` +
+            `P1: COMPLETED. Restarted P2 (ID: ${restartedId}): COMPLETED.`;
 
-        document.getElementById("deadlockState").textContent =
-            data.status;
+        deadlockRecoveryRunning = false;
+        await updateSignals();
 
         button.disabled = true;
 
     } catch (error) {
-        deadlockRecoveryRunning = false;
-        await updateSignals();
-
         message.textContent = "Recovery error: " + error.message;
-        button.disabled = false;
+
+        // If recovery has already started, keep polling paused.
+        // This prevents normal signals from interfering with the demo.
+        if (!recoveryStarted) {
+            deadlockRecoveryRunning = false;
+            await updateSignals();
+            button.disabled = false;
+        }
     }
 }
 
