@@ -568,8 +568,9 @@ def recover_deadlock(cycle=None):
             connection.close()
 
 
+
 def ensure_road_resources():
-    """Create shared road resources if they do not already exist."""
+    """Create shared road and intersection resources if they do not already exist."""
     connection = None
     cursor = None
 
@@ -579,7 +580,13 @@ def ensure_road_resources():
 
         road_resources = [
             ("ROAD_SEGMENT_1", 1),
-            ("ROAD_SEGMENT_2", 1)
+            ("ROAD_SEGMENT_2", 1),
+
+            # Four logical intersection zones
+            ("ZONE_NW", 1),
+            ("ZONE_NE", 1),
+            ("ZONE_SW", 1),
+            ("ZONE_SE", 1)
         ]
 
         for resource_name, total_instances in road_resources:
@@ -595,7 +602,7 @@ def ensure_road_resources():
             )
 
         connection.commit()
-        print("Shared road resources are ready.")
+        print("Road and intersection resources are ready.")
 
     except Exception as error:
         if connection:
@@ -607,7 +614,6 @@ def ensure_road_resources():
             cursor.close()
         if connection:
             connection.close()
-
 
 # -----------------------------------------
 # OS RESOURCE HELPERS FOR TRAFFIC INTEGRATION
@@ -644,6 +650,17 @@ def get_resource_id(resource_name):
         if connection:
             connection.close()
 
+def get_intersection_zone_path(direction):
+    """Return the intersection zones occupied by a vehicle."""
+
+    zone_paths = {
+        "NORTH": ("ZONE_NW", "ZONE_SW"),
+        "SOUTH": ("ZONE_SE", "ZONE_NE"),
+        "EAST": ("ZONE_NE", "ZONE_NW"),
+        "WEST": ("ZONE_SW", "ZONE_SE")
+    }
+
+    return zone_paths.get(str(direction).upper())
 
 def get_process_status(process_id):
     """Return the current status of an OS process."""
@@ -872,6 +889,210 @@ def finish_process(process_id, final_status="COMPLETED"):
         if connection:
             connection.rollback()
         print("Could not finish OS process:", error)
+        return False
+
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+
+def release_process_resources(process_id):
+    """
+    Release resources temporarily without terminating the process.
+    Used when normal traffic is preempted by emergency traffic.
+    """
+    connection = None
+    cursor = None
+
+    try:
+        connection = get_connection()
+        connection.start_transaction()
+        cursor = connection.cursor()
+
+        cursor.execute(
+            """
+            SELECT status
+            FROM os_processes
+            WHERE process_id = %s
+            FOR UPDATE
+            """,
+            (process_id,)
+        )
+
+        process = cursor.fetchone()
+
+        if process is None or process[0] in ("COMPLETED", "ABORTED"):
+            connection.rollback()
+            return False
+
+        cursor.execute(
+            """
+            SELECT os_resource_id
+            FROM os_resource_allocations
+            WHERE process_id = %s
+            """,
+            (process_id,)
+        )
+
+        released_resources = {
+            row[0] for row in cursor.fetchall()
+        }
+
+        cursor.execute(
+            """
+            DELETE FROM os_resource_allocations
+            WHERE process_id = %s
+            """,
+            (process_id,)
+        )
+
+        cursor.execute(
+            """
+            UPDATE os_resource_requests
+            SET request_status = 'CANCELLED'
+            WHERE process_id = %s
+              AND request_status IN ('WAITING', 'GRANTED')
+            """,
+            (process_id,)
+        )
+
+        cursor.execute(
+            """
+            UPDATE os_processes
+            SET status = 'WAITING'
+            WHERE process_id = %s
+            """,
+            (process_id,)
+        )
+        # Grant released resources to waiting processes.
+        for resource_id in sorted(released_resources):
+            cursor.execute(
+                """
+                SELECT total_instances
+                FROM os_resources
+                WHERE os_resource_id = %s
+                FOR UPDATE
+                """,
+                (resource_id,)
+            )
+
+            resource = cursor.fetchone()
+            if resource is None:
+                continue
+
+            total_instances = resource[0]
+
+            cursor.execute(
+                """
+                SELECT COUNT(*)
+                FROM os_resource_allocations
+                WHERE os_resource_id = %s
+                """,
+                (resource_id,)
+            )
+            allocated = cursor.fetchone()[0]
+
+            while allocated < total_instances:
+                cursor.execute(
+                    """
+                    SELECT request_id, process_id
+                    FROM os_resource_requests
+                    WHERE os_resource_id = %s
+                      AND request_status = 'WAITING'
+                    ORDER BY request_id
+                    LIMIT 1
+                    FOR UPDATE
+                    """,
+                    (resource_id,)
+                )
+
+                waiting = cursor.fetchone()
+                if waiting is None:
+                    break
+
+                waiting_request_id, waiting_process_id = waiting
+
+                cursor.execute(
+                    """
+                    SELECT status
+                    FROM os_processes
+                    WHERE process_id = %s
+                    FOR UPDATE
+                    """,
+                    (waiting_process_id,)
+                )
+
+                waiting_process = cursor.fetchone()
+
+                if (
+                    waiting_process is None
+                    or waiting_process[0] in ("COMPLETED", "ABORTED")
+                ):
+                    cursor.execute(
+                        """
+                        UPDATE os_resource_requests
+                        SET request_status = 'CANCELLED'
+                        WHERE request_id = %s
+                        """,
+                        (waiting_request_id,)
+                    )
+                    continue
+
+                cursor.execute(
+                    """
+                    INSERT INTO os_resource_allocations
+                        (process_id, os_resource_id)
+                    VALUES (%s, %s)
+                    """,
+                    (waiting_process_id, resource_id)
+                )
+
+                cursor.execute(
+                    """
+                    UPDATE os_resource_requests
+                    SET request_status = 'GRANTED'
+                    WHERE request_id = %s
+                    """,
+                    (waiting_request_id,)
+                )
+
+                cursor.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM os_resource_requests
+                    WHERE process_id = %s
+                      AND request_status = 'WAITING'
+                    """,
+                    (waiting_process_id,)
+                )
+
+                if cursor.fetchone()[0] == 0:
+                    cursor.execute(
+                        """
+                        UPDATE os_processes
+                        SET status = 'RUNNING'
+                        WHERE process_id = %s
+                          AND status = 'WAITING'
+                        """,
+                        (waiting_process_id,)
+                    )
+
+                allocated += 1
+
+        connection.commit()
+
+        print(
+            f"Process P{process_id} paused; "
+            f"released resources: {sorted(released_resources)}"
+        )
+        return True
+
+    except Exception as error:
+        if connection:
+            connection.rollback()
+        print("Could not release process resources:", error)
         return False
 
     finally:

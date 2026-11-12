@@ -1,0 +1,821 @@
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    background: #101827;
+    color: white;
+    font-family: Arial, sans-serif;
+}
+
+header {
+    text-align: center;
+    padding: 25px;
+    background: #172338;
+}
+
+header h1 {
+    color: #38bdf8;
+    margin-bottom: 10px;
+}
+
+#connection {
+    display: inline-block;
+    margin-top: 12px;
+    color: #4ade80;
+    font-weight: bold;
+}
+
+.dashboard {
+    padding: 30px;
+    text-align: center;
+}
+
+.intersection {
+    position: relative;
+    width: 650px;
+    height: 500px;
+    max-width: 100%;
+    margin: 30px auto;
+    background: #263445;
+    overflow: hidden;
+}
+
+.road {
+    position: absolute;
+    background: #343d49;
+}
+
+.vertical {
+    width: 150px;
+    height: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.horizontal {
+    height: 150px;
+    width: 100%;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.center {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 2;
+    font-size: 12px;
+    color: white;
+}
+
+.signal {
+    position: absolute;
+    z-index: 3;
+    background: #111827;
+    padding: 10px;
+    border-radius: 8px;
+    min-width: 90px;
+}
+
+.signal h3 {
+    font-size: 12px;
+    margin-bottom: 8px;
+}
+
+.north { top: 15px; left: 15px; }
+.south { bottom: 15px; right: 15px; }
+.east { top: 15px; right: 15px; }
+.west { bottom: 15px; left: 15px; }
+
+.light {
+    width: 22px;
+    height: 22px;
+    margin: auto;
+    border-radius: 50%;
+    background: red;
+    border: 2px solid #777;
+}
+
+
+
+/* Dynamic vehicle movement */
+
+.vehicle {
+    position: absolute;
+    z-index: 5;
+    font-size: 27px;
+    display: none;
+    white-space: nowrap;
+}
+
+.dynamic-car {
+    display: block;
+    animation-duration: 3s;
+    animation-timing-function: linear;
+    animation-fill-mode: both;
+}
+
+/* North to South */
+.dynamic-car.north-car {
+    left: 52%;
+    top: -40px;
+    animation-name: moveNorth;
+}
+
+/* South to North */
+.dynamic-car.south-car {
+    left: 48%;
+    top: 540px;
+    animation-name: moveSouth;
+}
+
+/* East to West */
+.dynamic-car.east-car {
+    left: 690px;
+    top: 48%;
+    animation-name: moveEast;
+}
+
+/* West to East */
+.dynamic-car.west-car {
+    left: -40px;
+    top: 52%;
+    animation-name: moveWest;
+}
+
+/* Complete road crossing */
+@keyframes moveNorth {
+    from { top: -40px; }
+    to { top: 540px; }
+}
+
+@keyframes moveSouth {
+    from { top: 540px; }
+    to { top: -40px; }
+}
+
+@keyframes moveEast {
+    from { left: 690px; }
+    to { left: -40px; }
+}
+
+@keyframes moveWest {
+    from { left: -40px; }
+    to { left: 690px; }
+}
+
+.traffic-controls {
+    max-width: 650px;
+    margin: 30px auto;
+    padding: 25px;
+    background: #1e293b;
+    border-radius: 12px;
+    text-align: left;
+}
+
+.traffic-controls h2,
+.traffic-controls h3 {
+    margin-bottom: 18px;
+    color: #38bdf8;
+}
+
+.traffic-controls label {
+    display: block;
+    margin: 12px 0 6px;
+}
+
+.traffic-controls select,
+.traffic-controls input {
+    width: 100%;
+    padding: 11px;
+    background: #334155;
+    color: white;
+    border: 1px solid #64748b;
+    border-radius: 6px;
+}
+
+.traffic-controls button {
+    margin-top: 18px;
+    padding: 12px 20px;
+    background: #0284c7;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.queue-container {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.queue-container p {
+    background: #334155;
+    padding: 12px;
+    border-radius: 6px;
+}
+
+#message {
+    margin: 12px 0;
+    color: #4ade80;
+}
+
+.light.red {
+    background-color: red;
+}
+
+.light.green {
+    background-color: green;
+}
+
+.light.yellow {
+    background-color: yellow;
+}
+
+
+/* Show vehicle when it is moving */
+.vehicle.go {
+    display: block;
+}
+
+/* North to South */
+.north-car.go {
+    animation: moveNorth 1.8s ease-in-out forwards;
+}
+
+/* South to North */
+.south-car.go {
+    animation: moveSouth 1.8s ease-in-out forwards;
+}
+
+/* East to West */
+.east-car.go {
+    animation: moveEast 1.8s ease-in-out forwards;
+}
+
+/* West to East */
+.west-car.go {
+    animation: moveWest 1.8s ease-in-out forwards;
+}
+
+@keyframes moveNorth {
+    from { translate: 0 0; }
+    to { translate: 0 130px; }
+}
+
+@keyframes moveSouth {
+    from { translate: 0 0; }
+    to { translate: 0 -130px; }
+}
+
+@keyframes moveEast {
+    from { translate: 0 0; }
+    to { translate: -130px 0; }
+}
+
+@keyframes moveWest {
+    from { translate: 0 0; }
+    to { translate: 130px 0; }
+}
+
+/* Four-direction input layout - keeps the original dark theme and intersection. */
+.simulation-actions {
+    max-width: 1250px;
+    margin: 18px auto 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    flex-wrap: wrap;
+}
+
+.simulation-actions button,
+.direction-block button {
+    padding: 11px 17px;
+    background: #0284c7;
+    color: #fff;
+    border: 0;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.simulation-actions button:disabled,
+.direction-block button:disabled {
+    opacity: .45;
+    cursor: not-allowed;
+}
+
+#simulationState {
+    color: #facc15;
+    background: #263445;
+    border: 1px solid #475569;
+    border-radius: 6px;
+    padding: 9px 12px;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.timer-label { color: #cbd5e1; }
+#simulationTimer { color: #38bdf8; font-variant-numeric: tabular-nums; }
+
+.simulation-layout {
+    width: 100%;
+    max-width: 1280px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: minmax(225px, 280px) minmax(500px, 650px) minmax(225px, 280px);
+    grid-template-rows: auto auto auto;
+    grid-template-areas:
+        ". north ."
+        "west intersection east"
+        ". south .";
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+}
+
+.north-block { grid-area: north; }
+.west-block { grid-area: west; }
+.east-block { grid-area: east; }
+.south-block { grid-area: south; }
+
+.direction-block {
+    width: 100%;
+    max-width: 100%;
+    padding: 17px;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    text-align: left;
+    box-shadow: 0 5px 16px rgba(0,0,0,.16);
+}
+
+.direction-block h3 {
+    color: #38bdf8;
+    font-size: 15px;
+    margin-bottom: 13px;
+    letter-spacing: .7px;
+}
+
+.input-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 9px;
+    margin-bottom: 10px;
+}
+
+.direction-block label {
+    display: block;
+    margin: 0 0 5px;
+    color: #cbd5e1;
+    font-size: 11px;
+}
+
+.direction-block input,
+.direction-block select {
+    width: 100%;
+    min-width: 0;
+    padding: 9px 8px;
+    background: #334155;
+    color: #fff;
+    border: 1px solid #64748b;
+    border-radius: 5px;
+    font-size: 12px;
+}
+
+.direction-block button {
+    width: 100%;
+    margin-top: 4px;
+    font-size: 12px;
+}
+
+.block-message {
+    min-height: 14px;
+    margin-top: 8px;
+    color: #4ade80;
+    font-size: 11px;
+}
+
+.intersection {
+    grid-area: intersection;
+    width: 650px;
+    height: 500px;
+    max-width: 100%;
+    margin: 0 auto;
+    overflow: hidden;
+    isolation: isolate;
+}
+
+.lane-mark {
+    position: absolute;
+    z-index: 1;
+    pointer-events: none;
+    opacity: .55;
+}
+
+.vertical-mark {
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    border-left: 2px dashed #aeb8c4;
+}
+
+.horizontal-mark {
+    left: 0;
+    right: 0;
+    top: 50%;
+    border-top: 2px dashed #aeb8c4;
+}
+
+.stop-line {
+    position: absolute;
+    z-index: 2;
+    background: #e2e8f0;
+    opacity: .8;
+}
+
+.stop-north, .stop-south { width: 150px; height: 3px; left: 50%; transform: translateX(-50%); }
+.stop-north { top: calc(50% - 78px); }
+.stop-south { top: calc(50% + 75px); }
+.stop-east, .stop-west { height: 150px; width: 3px; top: 50%; transform: translateY(-50%); }
+.stop-east { left: calc(50% + 75px); }
+.stop-west { left: calc(50% - 78px); }
+
+.approach-queue {
+    position: absolute;
+    z-index: 4;
+    inset: 0;
+    pointer-events: none;
+}
+
+.queued-car {
+    position: absolute;
+    font-size: 22px;
+    line-height: 1;
+    filter: drop-shadow(0 2px 2px rgba(0,0,0,.5));
+}
+
+.queued-car.emergency { font-size: 24px; }
+.north-approach .queued-car { left: calc(50% - 12px); top: calc(50% - 104px - var(--queue-index) * 27px); }
+.south-approach .queued-car { left: calc(50% + 10px); top: calc(50% + 82px + var(--queue-index) * 27px); }
+.east-approach .queued-car { left: calc(50% + 88px + var(--queue-index) * 28px); top: calc(50% - 12px); }
+.west-approach .queued-car { left: calc(50% - 112px - var(--queue-index) * 28px); top: calc(50% + 8px); }
+
+/* Animated vehicles cross the complete intersection, not just its centre. */
+.dynamic-car {
+    display: block;
+    position: absolute;
+    z-index: 8;
+    font-size: 27px;
+    white-space: nowrap;
+    animation-duration: 2.6s;
+    animation-timing-function: linear;
+    animation-fill-mode: forwards;
+    pointer-events: none;
+}
+.dynamic-car.north-car { left: calc(50% - 13px); top: -40px; animation-name: travel-north; }
+.dynamic-car.south-car { left: calc(50% + 12px); top: 540px; animation-name: travel-south; }
+.dynamic-car.east-car { left: 690px; top: calc(50% - 14px); animation-name: travel-east; }
+.dynamic-car.west-car { left: -40px; top: calc(50% + 10px); animation-name: travel-west; }
+
+@keyframes travel-north { from { top: -40px; } to { top: 540px; } }
+@keyframes travel-south { from { top: 540px; } to { top: -40px; } }
+@keyframes travel-east { from { left: 690px; } to { left: -40px; } }
+@keyframes travel-west { from { left: -40px; } to { left: 690px; } }
+
+.live-summary {
+    max-width: 950px;
+    margin: 24px auto;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+}
+
+.summary-card {
+    padding: 15px;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    color: #cbd5e1;
+}
+.summary-card strong { color: #38bdf8; font-size: 20px; }
+
+.traffic-log {
+    max-width: 950px;
+    margin: 24px auto 0;
+    padding: 20px;
+    background: #1e293b;
+    border-radius: 10px;
+    text-align: left;
+}
+.traffic-log h2 { color: #38bdf8; margin-bottom: 12px; font-size: 18px; }
+.log-entry {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 9px 0;
+    border-bottom: 1px solid #334155;
+    color: #cbd5e1;
+    font-size: 12px;
+}
+.log-entry:last-child { border-bottom: 0; }
+.log-entry .emergency-tag { color: #fb7185; font-weight: bold; }
+.empty-log { color: #94a3b8; font-size: 12px; }
+.main-message { margin-top: 14px; color: #4ade80; }
+
+@media (max-width: 1250px) {
+    .simulation-layout {
+        grid-template-columns: minmax(210px, 250px) minmax(450px, 600px) minmax(210px, 250px);
+        gap: 12px;
+    }
+    .intersection { width: 600px; height: 470px; }
+}
+
+@media (max-width: 1050px) {
+    .simulation-layout {
+        grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr);
+        grid-template-areas:
+            "north north"
+            "intersection intersection"
+            "west east"
+            "south south";
+        max-width: 760px;
+    }
+    .north-block, .south-block { max-width: 520px; justify-self: center; }
+    .intersection { width: 650px; height: 500px; }
+}
+
+@media (max-width: 680px) {
+    .dashboard { padding: 18px 10px; }
+    .dashboard > h2 { font-size: 20px; }
+    .simulation-layout { display: flex; flex-direction: column; }
+    .direction-block { max-width: 100%; }
+    .intersection { width: 100%; height: 390px; }
+    .signal { transform: scale(.82); transform-origin: top left; }
+    .south { transform-origin: bottom right; }
+    .east { transform-origin: top right; }
+    .west { transform-origin: bottom left; }
+    .live-summary { grid-template-columns: 1fr; }
+    .log-entry { flex-direction: column; gap: 3px; }
+}
+
+.queue-overflow {
+    position: absolute;
+    z-index: 5;
+    padding: 3px 5px;
+    border-radius: 10px;
+    background: #0f172a;
+    border: 1px solid #94a3b8;
+    color: #f8fafc;
+    font-size: 10px;
+    font-weight: bold;
+}
+.emergency-moving {
+    filter: drop-shadow(0 0 5px rgba(248, 113, 113, .9));
+}
+
+
+/* ==========================================
+   OS DEADLOCK MANAGEMENT PANEL
+========================================== */
+
+.deadlock-panel {
+    max-width: 1100px;
+    margin: 35px auto;
+    padding: 25px;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 12px;
+    text-align: left;
+    box-shadow: 0 5px 18px rgba(0, 0, 0, 0.2);
+}
+
+.deadlock-panel > h2 {
+    color: #38bdf8;
+    margin-bottom: 10px;
+    font-size: 22px;
+}
+
+.deadlock-description {
+    color: #94a3b8;
+    font-size: 13px;
+    line-height: 1.6;
+    margin-bottom: 20px;
+}
+
+.deadlock-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 22px;
+}
+
+.deadlock-actions button {
+    padding: 11px 20px;
+    border: none;
+    border-radius: 6px;
+    color: white;
+    font-weight: bold;
+    cursor: pointer;
+    background: #0284c7;
+}
+
+#recoverDeadlock {
+    background: #dc2626;
+}
+
+.deadlock-actions button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.deadlock-status {
+    padding: 16px;
+    background: #263445;
+    border: 1px solid #475569;
+    border-radius: 8px;
+    margin-bottom: 18px;
+}
+
+.deadlock-status h3 {
+    color: #cbd5e1;
+    font-size: 15px;
+    margin-bottom: 8px;
+}
+
+#deadlockState {
+    color: #facc15;
+    margin-left: 5px;
+}
+
+#deadlockMessage {
+    color: #94a3b8;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.deadlock-details {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.deadlock-details > div {
+    min-width: 0;
+    padding: 15px;
+    background: #263445;
+    border: 1px solid #475569;
+    border-radius: 8px;
+}
+
+.deadlock-details h3,
+.deadlock-cycle h3 {
+    color: #38bdf8;
+    font-size: 14px;
+    margin-bottom: 12px;
+}
+
+.deadlock-details p {
+    color: #cbd5e1;
+    font-size: 12px;
+    line-height: 1.6;
+    padding: 8px;
+    margin-bottom: 7px;
+    background: #334155;
+    border-radius: 5px;
+    overflow-wrap: anywhere;
+}
+
+.deadlock-cycle {
+    margin-top: 18px;
+    padding: 16px;
+    background: #351f2b;
+    border: 1px solid #9f354d;
+    border-radius: 8px;
+}
+
+#deadlockCycle {
+    color: #fb7185;
+    font-weight: bold;
+    font-size: 13px;
+    line-height: 1.7;
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 750px) {
+    .deadlock-details {
+        grid-template-columns: 1fr;
+    }
+
+    .deadlock-panel {
+        padding: 17px;
+    }
+}
+
+
+/* ==========================================
+   VISUAL DEADLOCK DEMONSTRATION
+========================================== */
+
+.deadlock-demo-car {
+    position: absolute;
+    z-index: 12;
+    display: block;
+    font-size: 32px;
+    line-height: 1;
+    pointer-events: none;
+    filter: drop-shadow(0 0 7px rgba(248, 113, 113, 0.9));
+}
+
+.deadlock-demo-car .process-label {
+    position: absolute;
+    top: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 4px 7px;
+    border-radius: 5px;
+    background: #7f1d1d;
+    color: white;
+    font-size: 10px;
+    font-weight: bold;
+    white-space: nowrap;
+}
+
+.deadlock-demo-car.demo-p1 {
+    top: calc(50% - 65px);
+    left: calc(50% - 48px);
+}
+
+.deadlock-demo-car.demo-p2 {
+    top: calc(50% + 15px);
+    left: calc(50% + 15px);
+}
+
+.deadlock-demo-explanation {
+    position: absolute;
+    z-index: 15;
+    top: 105px;
+    left: 10px;
+    max-width: 190px;
+    padding: 10px;
+    border: 1px solid #fb7185;
+    border-radius: 8px;
+    background: rgba(15, 23, 42, 0.95);
+    color: #f8fafc;
+    font-size: 11px;
+    line-height: 1.6;
+    pointer-events: none;
+}
+
+.deadlock-demo-explanation strong {
+    color: #fb7185;
+}
+
+.deadlock-demo-car.victim-aborted {
+    opacity: 0;
+    transition: opacity 0.5s ease;
+}
+
+.deadlock-demo-car.demo-resuming {
+    animation: deadlockResume 1.8s ease-in-out forwards;
+}
+
+@keyframes deadlockResume {
+    0% { transform: translate(0, 0); opacity: 1; }
+    100% { transform: translate(0, -100px); opacity: 0; }
+}
+
+/* Deadlock recovery animation */
+
+.deadlock-demo-car.victim-aborted {
+    opacity: 0;
+    transition: opacity 0.6s ease;
+}
+
+.deadlock-demo-car.demo-move-south {
+    animation: demoMoveSouth 1.8s linear forwards;
+}
+
+.deadlock-demo-car.demo-move-north {
+    animation: demoMoveNorth 1.8s linear forwards;
+}
+
+@keyframes demoMoveSouth {
+    from { top: 130px; }
+    to { top: 540px; }
+}
+
+@keyframes demoMoveNorth {
+    from { top: 340px; }
+    to { top: -50px; }
+}

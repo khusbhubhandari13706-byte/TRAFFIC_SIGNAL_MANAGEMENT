@@ -1,0 +1,435 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Traffic Management</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+    <header>
+        <h1>SMART TRAFFIC MANAGEMENT SYSTEM</h1>
+        <p>Traffic Signal and Emergency Resource Manager</p>
+        <span id="connection">Connecting...</span>
+    </header>
+
+    <main>
+        <section class="dashboard">
+            <h2>Live Traffic Control</h2>
+
+            <div class="simulation-actions">
+                <button id="startSimulation" onclick="startSimulation()">
+                    Start Simulation
+                </button>
+                <span id="simulationState">NOT STARTED</span>
+                <span class="timer-label">
+                    Simulation time:
+                    <strong id="simulationTimer">00:00</strong>
+                </span>
+            </div>
+
+            <div class="simulation-layout">
+
+                <!-- NORTH INPUT BLOCK -->
+                <section class="direction-block north-block"
+                         data-direction="NORTH">
+
+                    <h3>NORTH</h3>
+
+                    <div class="input-row">
+                        <div>
+                            <label for="normal-NORTH">
+                                Normal vehicles
+                            </label>
+                            <input type="number"
+                                   id="normal-NORTH"
+                                   min="0" max="50" value="0">
+                        </div>
+
+                        <div>
+                            <label for="density-NORTH">Density</label>
+                            <select id="density-NORTH">
+                                <option value="LOW">Low</option>
+                                <option value="MEDIUM">Medium</option>
+                                <option value="HIGH">High</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="input-row">
+                        <div>
+                            <label for="emergency-type-NORTH">
+                                Emergency type
+                            </label>
+                            <select id="emergency-type-NORTH">
+                                <option value="AMBULANCE">Ambulance</option>
+                                <option value="FIRE_TRUCK">Fire Truck</option>
+                                <option value="POLICE">Police</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label for="emergency-count-NORTH">
+                                Emergency count
+                            </label>
+                            <input type="number"
+                                   id="emergency-count-NORTH"
+                                   min="0" max="50" value="0">
+                        </div>
+                    </div>
+
+                    <button class="add-direction"
+                            id="add-NORTH"
+                            onclick="addDirectionTraffic('NORTH')"
+                            disabled>
+                        Add to Simulation
+                    </button>
+
+                    <p class="block-message" id="message-NORTH"></p>
+                </section>
+
+
+                <!-- WEST INPUT BLOCK -->
+                <section class="direction-block west-block"
+                         data-direction="WEST">
+
+                    <h3>WEST</h3>
+
+                    <div class="input-row">
+                        <div>
+                            <label for="normal-WEST">
+                                Normal vehicles
+                            </label>
+                            <input type="number"
+                                   id="normal-WEST"
+                                   min="0" max="50" value="0">
+                        </div>
+
+                        <div>
+                            <label for="density-WEST">Density</label>
+                            <select id="density-WEST">
+                                <option value="LOW">Low</option>
+                                <option value="MEDIUM">Medium</option>
+                                <option value="HIGH">High</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="input-row">
+                        <div>
+                            <label for="emergency-type-WEST">
+                                Emergency type
+                            </label>
+                            <select id="emergency-type-WEST">
+                                <option value="AMBULANCE">Ambulance</option>
+                                <option value="FIRE_TRUCK">Fire Truck</option>
+                                <option value="POLICE">Police</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label for="emergency-count-WEST">
+                                Emergency count
+                            </label>
+                            <input type="number"
+                                   id="emergency-count-WEST"
+                                   min="0" max="50" value="0">
+                        </div>
+                    </div>
+
+                    <button class="add-direction"
+                            id="add-WEST"
+                            onclick="addDirectionTraffic('WEST')"
+                            disabled>
+                        Add to Simulation
+                    </button>
+
+                    <p class="block-message" id="message-WEST"></p>
+                </section>
+
+
+                <!-- FOUR-WAY INTERSECTION -->
+                <div class="intersection" id="intersection">
+
+                    <div class="road vertical"></div>
+                    <div class="road horizontal"></div>
+
+                    <div class="lane-mark vertical-mark"></div>
+                    <div class="lane-mark horizontal-mark"></div>
+
+                    <div class="stop-line stop-north"></div>
+                    <div class="stop-line stop-south"></div>
+                    <div class="stop-line stop-east"></div>
+                    <div class="stop-line stop-west"></div>
+
+                    <!-- Vehicle queues -->
+                    <div class="approach-queue north-approach"
+                         id="vehicles-NORTH"></div>
+
+                    <div class="approach-queue south-approach"
+                         id="vehicles-SOUTH"></div>
+
+                    <div class="approach-queue east-approach"
+                         id="vehicles-EAST"></div>
+
+                    <div class="approach-queue west-approach"
+                         id="vehicles-WEST"></div>
+
+                    <div class="center">
+                        <span>INTERSECTION</span>
+                    </div>
+
+                    <!-- Traffic signals -->
+                    <div class="signal north">
+                        <h3>NORTH</h3>
+                        <div id="NORTH" class="light red"></div>
+                    </div>
+
+                    <div class="signal south">
+                        <h3>SOUTH</h3>
+                        <div id="SOUTH" class="light red"></div>
+                    </div>
+
+                    <div class="signal east">
+                        <h3>EAST</h3>
+                        <div id="EAST" class="light red"></div>
+                    </div>
+
+                    <div class="signal west">
+                        <h3>WEST</h3>
+                        <div id="WEST" class="light red"></div>
+                    </div>
+
+                </div>
+
+
+                <!-- EAST INPUT BLOCK -->
+                <section class="direction-block east-block"
+                         data-direction="EAST">
+
+                    <h3>EAST</h3>
+
+                    <div class="input-row">
+                        <div>
+                            <label for="normal-EAST">
+                                Normal vehicles
+                            </label>
+                            <input type="number"
+                                   id="normal-EAST"
+                                   min="0" max="50" value="0">
+                        </div>
+
+                        <div>
+                            <label for="density-EAST">Density</label>
+                            <select id="density-EAST">
+                                <option value="LOW">Low</option>
+                                <option value="MEDIUM">Medium</option>
+                                <option value="HIGH">High</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="input-row">
+                        <div>
+                            <label for="emergency-type-EAST">
+                                Emergency type
+                            </label>
+                            <select id="emergency-type-EAST">
+                                <option value="AMBULANCE">Ambulance</option>
+                                <option value="FIRE_TRUCK">Fire Truck</option>
+                                <option value="POLICE">Police</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label for="emergency-count-EAST">
+                                Emergency count
+                            </label>
+                            <input type="number"
+                                   id="emergency-count-EAST"
+                                   min="0" max="50" value="0">
+                        </div>
+                    </div>
+
+                    <button class="add-direction"
+                            id="add-EAST"
+                            onclick="addDirectionTraffic('EAST')"
+                            disabled>
+                        Add to Simulation
+                    </button>
+
+                    <p class="block-message" id="message-EAST"></p>
+                </section>
+
+
+                <!-- SOUTH INPUT BLOCK -->
+                <section class="direction-block south-block"
+                         data-direction="SOUTH">
+
+                    <h3>SOUTH</h3>
+
+                    <div class="input-row">
+                        <div>
+                            <label for="normal-SOUTH">
+                                Normal vehicles
+                            </label>
+                            <input type="number"
+                                   id="normal-SOUTH"
+                                   min="0" max="50" value="0">
+                        </div>
+
+                        <div>
+                            <label for="density-SOUTH">Density</label>
+                            <select id="density-SOUTH">
+                                <option value="LOW">Low</option>
+                                <option value="MEDIUM">Medium</option>
+                                <option value="HIGH">High</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="input-row">
+                        <div>
+                            <label for="emergency-type-SOUTH">
+                                Emergency type
+                            </label>
+                            <select id="emergency-type-SOUTH">
+                                <option value="AMBULANCE">Ambulance</option>
+                                <option value="FIRE_TRUCK">Fire Truck</option>
+                                <option value="POLICE">Police</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label for="emergency-count-SOUTH">
+                                Emergency count
+                            </label>
+                            <input type="number"
+                                   id="emergency-count-SOUTH"
+                                   min="0" max="50" value="0">
+                        </div>
+                    </div>
+
+                    <button class="add-direction"
+                            id="add-SOUTH"
+                            onclick="addDirectionTraffic('SOUTH')"
+                            disabled>
+                        Add to Simulation
+                    </button>
+
+                    <p class="block-message" id="message-SOUTH"></p>
+                </section>
+
+            </div>
+
+
+            <!-- LIVE SUMMARY -->
+            <section class="live-summary">
+
+                <div class="summary-card">
+                    <span>Normal waiting</span>
+                    <strong id="totalNormal">0</strong>
+                </div>
+
+                <div class="summary-card">
+                    <span>Emergency waiting</span>
+                    <strong id="totalEmergency">0</strong>
+                </div>
+
+                <div class="summary-card">
+                    <span>Total waiting</span>
+                    <strong id="totalWaiting">0</strong>
+                </div>
+
+            </section>
+
+
+            <!-- ARRIVAL LOG -->
+            <section class="traffic-log">
+                <h2>Recent Traffic Arrivals</h2>
+
+                <div id="arrivalLog">
+                    <p class="empty-log">No traffic added yet.</p>
+                </div>
+            </section>
+
+            <!-- DEADLOCK MANAGEMENT PANEL -->
+            <section class="deadlock-panel">
+
+                <h2>OS Deadlock Management</h2>
+
+                <p class="deadlock-description">
+                    Simulate resource allocation, detect circular waiting
+                    and recover from deadlock using process termination.
+                </p>
+
+                <div class="deadlock-actions">
+
+                    <button id="simulateDeadlock"
+                            onclick="simulateDeadlock()">
+                        Simulate Deadlock
+                    </button>
+
+                    <button id="recoverDeadlock"
+                            onclick="recoverDeadlock()"
+                            disabled>
+                        Recover Deadlock
+                    </button>
+
+                </div>
+
+                <div class="deadlock-status">
+                    <h3>Deadlock Status:
+                        <span id="deadlockState">IDLE</span>
+                    </h3>
+
+                    <p id="deadlockMessage">
+                        No deadlock simulation started.
+                    </p>
+                </div>
+
+                <div class="deadlock-details">
+
+                    <div>
+                        <h3>Processes</h3>
+                        <div id="deadlockProcesses">
+                            No processes available.
+                        </div>
+                    </div>
+
+                    <div>
+                        <h3>Resource Allocations</h3>
+                        <div id="deadlockAllocations">
+                            No resources allocated.
+                        </div>
+                    </div>
+
+                    <div>
+                        <h3>Waiting Requests</h3>
+                        <div id="deadlockWaiting">
+                            No waiting requests.
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="deadlock-cycle">
+                    <h3>Detected Circular Wait</h3>
+                    <p id="deadlockCycle">No cycle detected.</p>
+                </div>
+
+            </section>
+            <!-- END DEADLOCK MANAGEMENT PANEL -->
+
+
+            <p id="message" class="main-message"></p>
+
+        </section>
+    </main>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+
+</body>
+</html>

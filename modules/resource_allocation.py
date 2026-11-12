@@ -314,9 +314,6 @@ class SignalController:
             print("Deadlock check: No deadlock detected.")
 
 
-    # -----------------------------------------
-    # SERVE NORMAL TRAFFIC
-    # -----------------------------------------
     def serve_normal(self, request):
 
         (
@@ -330,46 +327,54 @@ class SignalController:
 
         with self.signal_lock:
 
-            # An emergency might have arrived while
-            # this normal request was waiting.
+            # If emergency is waiting, don't lose this request.
             if self.emergency_event.is_set():
-                return
+                return False
+
             process_id = create_process(
-            f"NORMAL_TRAFFIC_{request_id}"
+                f"NORMAL_TRAFFIC_{request_id}"
             )
 
-            resource_id = self.get_road_resource(direction)
+            if process_id is None:
+                print("Could not create normal traffic process.")
+                return False
 
-            granted = request_resource(process_id, resource_id)
+            served = False
 
-            if not granted:
-                finish_process(process_id, "ABORTED")
-                print(f"Could not acquire road resource for request {request_id}.")
-                return
             try:
+                resource_id = self.get_road_resource(direction)
+
+                if resource_id is None:
+                    print("Road resource not found.")
+                    return False
+
+                granted = request_resource(process_id, resource_id)
+
+                if granted is not True:
+                    print(
+                        f"Could not acquire road resource "
+                        f"for request {request_id}."
+                    )
+                    return False
+
                 self.switch_to_green(direction)
 
                 duration = NORMAL_GREEN_TIME[density]
 
                 print(
                     f"Serving normal traffic: {direction}, "
-                    f"density={density}, "
-                    f"duration={duration}s"
+                    f"density={density}, duration={duration}s"
                 )
 
-                # Wait in short intervals so an emergency
-                # can interrupt normal green safely.
+                # Emergency can interrupt normal green.
                 interrupted = self.emergency_event.wait(
                     timeout=duration
                 )
 
                 if interrupted:
-                    print(
-                        "Emergency arrived. "
-                        "Normal green will end safely."
-                    )
+                    print("Emergency arrived. Ending normal green safely.")
 
-                # GREEN -> YELLOW -> ALL-RED.
+                # GREEN -> YELLOW
                 connection = get_connection()
                 cursor = connection.cursor()
 
@@ -383,13 +388,13 @@ class SignalController:
                 )
 
                 connection.commit()
-
                 cursor.close()
                 connection.close()
 
                 print(f"{direction}: YELLOW")
                 time.sleep(YELLOW_TIME)
 
+                # All directions RED for clearance.
                 self.set_all_red()
                 time.sleep(ALL_RED_TIME)
 
@@ -398,10 +403,23 @@ class SignalController:
                     f"{direction}, density={density}"
                 )
 
+                served = True
+
             except Exception as error:
                 print("Normal traffic error:", error)
+
+                try:
+                    self.set_all_red()
+                except Exception:
+                    pass
+
             finally:
-                finish_process(process_id, "COMPLETED")
+                finish_process(
+                    process_id,
+                    "COMPLETED" if served else "ABORTED"
+                )
+
+            return served
     # -----------------------------------------
     # SERVE EMERGENCY REQUEST
     # -----------------------------------------
@@ -445,7 +463,7 @@ class SignalController:
                         f"Emergency request {request_id} "
                         "is not pending. Skipping."
                     )
-                    return
+                    return True
 
                 cursor.execute(
                     """
@@ -466,7 +484,7 @@ class SignalController:
                         pass
 
                 print("Could not start emergency:", error)
-                return
+                return False
 
             finally:
                 if cursor is not None:
@@ -535,7 +553,7 @@ class SignalController:
                         f"Road resource unavailable for emergency "
                         f"request {request_id}. Request remains pending."
                     )
-                    return
+                    return False
 
                 # 4. Serve emergency traffic.
                 emergency_started = True
@@ -660,19 +678,26 @@ class SignalController:
                         )
                     except Exception as error:
                         print("Process cleanup error:", error)
+                return True
 
     # -----------------------------------------
-    # CENTRAL SCHEDULER
+    # BACKGROUND WORKER
     # -----------------------------------------
 
-    def run_until_idle(self):
+    def run_forever(self):
+        """Continuously process traffic in the background."""
 
-        while (
-            not self.normal_queue.empty()
-            or not self.emergency_queue.empty()
-        ):
+        print("Signal Controller background worker started.")
 
-            # Emergency queue always gets checked first.
+        while not self.stop_event.is_set():
+
+            # Wait until a new request arrives.
+            self.wake_event.wait(timeout=1)
+
+            if self.stop_event.is_set():
+                break
+
+            # Emergency requests always get priority.
             try:
                 emergency = self.emergency_queue.get_nowait()
 
@@ -682,37 +707,74 @@ class SignalController:
             if emergency is not None:
                 try:
                     self.serve_emergency(emergency)
+                    self.check_deadlock_and_recover()
 
                 finally:
                     self.emergency_queue.task_done()
 
-                # Check for deadlock after emergency processing.
-                self.check_deadlock_and_recover()
+                # Clear the emergency flag only after
+                # checking whether more emergencies exist.
+                self.emergency_event.clear()
 
-                # Keep emergency mode active while more
-                # emergency requests are waiting.
-                if self.emergency_queue.empty():
-                    self.emergency_event.clear()
+                if not self.emergency_queue.empty():
+                    self.emergency_event.set()
 
                 continue
 
-            # Check emergency queue before normal traffic.
-            if self.emergency_event.is_set():
-                continue
+            # Process normal traffic only when no
+            # emergency request is waiting.
+            if not self.emergency_event.is_set():
 
-            try:
-                normal = self.normal_queue.get_nowait()
+                try:
+                    normal = self.normal_queue.get_nowait()
 
-            except Empty:
-                continue
+                except Empty:
+                    normal = None
 
-            try:
-                self.serve_normal(normal)
+                if normal is not None:
+                    try:
+                        self.serve_normal(normal)
+                        self.check_deadlock_and_recover()
 
-            finally:
-                self.normal_queue.task_done()
+                    finally:
+                        self.normal_queue.task_done()
 
-            # Check for deadlock after normal processing.
-            self.check_deadlock_and_recover()
+            # Reset wake event when queues are empty.
+            if (
+                self.normal_queue.empty()
+                and self.emergency_queue.empty()
+            ):
+                self.wake_event.clear()
 
-        print("\nAll queued requests have been processed.")
+        print("Signal Controller background worker stopped.")
+
+    # -----------------------------------------
+    # START BACKGROUND THREAD
+    # -----------------------------------------
+
+    def start_worker(self):
+
+        if hasattr(self, "worker_thread"):
+            if self.worker_thread.is_alive():
+                return
+
+        self.stop_event.clear()
+
+        self.worker_thread = threading.Thread(
+            target=self.run_forever,
+            daemon=True
+        )
+
+        self.worker_thread.start()
+
+    # -----------------------------------------
+    # STOP BACKGROUND THREAD
+    # -----------------------------------------
+
+    def stop_worker(self):
+
+        self.stop_event.set()
+        self.wake_event.set()
+
+        if hasattr(self, "worker_thread"):
+            self.worker_thread.join(timeout=5)

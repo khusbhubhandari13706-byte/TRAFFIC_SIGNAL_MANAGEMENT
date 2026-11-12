@@ -2,17 +2,12 @@ from queue import PriorityQueue
 
 from modules.traffic_density import add_request
 from modules.emergency_priority import register_emergency
-from modules.resource_allocation import SignalController
+from modules.signal_controller import SignalController
 from modules.deadlock_manager import ensure_road_resources
 from modules.deadlock_manager import run_deadlock_demo
 def main():
     ensure_road_resources()
 
-    # Temporary queues used to collect user input.
-    normal_input_queue = PriorityQueue()
-    emergency_input_queue = PriorityQueue()
-
-    controller = SignalController()
     # Temporary queues used to collect user input.
     normal_input_queue = PriorityQueue()
     emergency_input_queue = PriorityQueue()
