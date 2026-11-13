@@ -952,6 +952,162 @@ def finish_process(process_id, final_status="COMPLETED"):
             connection.close()
 
 
+
+def recover_abandoned_traffic_processes():
+    """
+    Recover unfinished traffic processes left behind by a previous
+    Flask session.
+
+    This must run before the new SignalController and worker start.
+    Browser deadlock demo processes are deliberately excluded.
+    """
+
+    connection = None
+    cursor = None
+    lock_acquired = False
+
+    try:
+        connection = get_connection()
+        cursor = connection.cursor()
+
+        # Serialize startup recovery with normal resource requests.
+        cursor.execute(
+            "SELECT GET_LOCK(%s, 10)",
+            ("TRAFFIC_BANKERS_LOCK",)
+        )
+
+        lock_result = cursor.fetchone()
+
+        if not lock_result or lock_result[0] != 1:
+            raise RuntimeError(
+                "Could not acquire traffic resource recovery lock."
+            )
+
+        lock_acquired = True
+
+        connection.start_transaction()
+
+        # Find unfinished traffic processes only.
+        # Browser deadlock demo processes are excluded.
+        cursor.execute(
+            """
+            SELECT process_id, process_name
+            FROM os_processes
+            WHERE status IN ('INITIALIZING', 'RUNNING', 'WAITING')
+              AND (
+                  LEFT(process_name, 15) = 'NORMAL_TRAFFIC_'
+                  OR LEFT(process_name, 10) = 'EMERGENCY_'
+              )
+            FOR UPDATE
+            """
+        )
+
+        abandoned_processes = cursor.fetchall()
+
+        if not abandoned_processes:
+            connection.commit()
+            print("Startup recovery: no abandoned traffic processes.")
+            return 0
+
+        process_ids = [
+            process_id for process_id, process_name
+            in abandoned_processes
+        ]
+
+        placeholders = ",".join(["%s"] * len(process_ids))
+
+        # Release all allocations held by abandoned processes.
+        cursor.execute(
+            f"""
+            DELETE FROM os_resource_allocations
+            WHERE process_id IN ({placeholders})
+            """,
+            tuple(process_ids)
+        )
+
+        released_count = cursor.rowcount
+
+        # Cancel all their outstanding requests.
+        cursor.execute(
+            f"""
+            UPDATE os_resource_requests
+            SET request_status = 'CANCELLED'
+            WHERE process_id IN ({placeholders})
+              AND request_status IN ('WAITING', 'GRANTED')
+            """,
+            tuple(process_ids)
+        )
+
+        cancelled_count = cursor.rowcount
+
+        # Mark every abandoned traffic process as ABORTED.
+        cursor.execute(
+            f"""
+            UPDATE os_processes
+            SET status = 'ABORTED'
+            WHERE process_id IN ({placeholders})
+              AND status IN ('INITIALIZING', 'RUNNING', 'WAITING')
+            """,
+            tuple(process_ids)
+        )
+
+        # Record recovery in system logs.
+        cursor.execute(
+            """
+            INSERT INTO system_logs (event_type, details)
+            VALUES (%s, %s)
+            """,
+            (
+                "STARTUP_RECOVERY",
+                (
+                    f"Recovered {len(process_ids)} abandoned traffic "
+                    f"processes. Released {released_count} allocations "
+                    f"and cancelled {cancelled_count} requests."
+                )
+            )
+        )
+
+        connection.commit()
+
+        print("\n========== STARTUP RECOVERY ==========")
+
+        for process_id, process_name in abandoned_processes:
+            print(
+                f"Recovered P{process_id}: {process_name} -> ABORTED"
+            )
+
+        print("Released allocations:", released_count)
+        print("Cancelled requests:", cancelled_count)
+        print("Startup recovery completed.")
+        print("======================================\n")
+
+        return len(process_ids)
+
+    except Exception as error:
+        if connection:
+            connection.rollback()
+
+        print("Startup recovery failed:", error)
+        raise
+
+    finally:
+        if lock_acquired and cursor and connection:
+            try:
+                cursor.execute(
+                    "SELECT RELEASE_LOCK(%s)",
+                    ("TRAFFIC_BANKERS_LOCK",)
+                )
+                cursor.fetchone()
+            except Exception as error:
+                print("Could not release recovery lock:", error)
+
+        if cursor:
+            cursor.close()
+
+        if connection:
+            connection.close()
+
+
 def release_process_resources(process_id):
     """
     Release resources temporarily without terminating the process.

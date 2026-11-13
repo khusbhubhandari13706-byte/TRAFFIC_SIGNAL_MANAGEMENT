@@ -15,7 +15,8 @@ from modules.deadlock_manager import (
     detect_deadlock,
     recover_deadlock,
     get_process_status,
-    finish_process
+    finish_process,
+    recover_abandoned_traffic_processes
 )
 
 app = Flask(
@@ -29,7 +30,8 @@ DENSITIES = ("LOW", "MEDIUM", "HIGH")
 EMERGENCY_TYPES = ("AMBULANCE", "FIRE_TRUCK", "POLICE")
 
 # One shared controller is used by the Flask application.
-controller = SignalController()
+# Controller is initialized only after startup recovery.
+controller = None
 
 # Separate sequence numbers are used by the two existing
 # database registration modules.
@@ -1099,6 +1101,20 @@ def controller_worker():
 if __name__ == "__main__":
     print("Starting Traffic Management System...")
 
+    # STEP 1: Recover unfinished traffic processes from the previous run.
+    print("\nChecking for abandoned traffic processes...")
+
+    recovered_count = recover_abandoned_traffic_processes()
+
+    print(
+        f"Startup recovery completed. "
+        f"Processes recovered: {recovered_count}"
+    )
+
+    # STEP 2: Initialize a fresh signal controller.
+    controller = SignalController()
+
+    # STEP 3: Start the background worker.
     worker = threading.Thread(
         target=controller_worker,
         name="TrafficControllerWorker",
@@ -1107,7 +1123,7 @@ if __name__ == "__main__":
 
     worker.start()
 
-    # Disable the reloader to prevent duplicate background workers.
+    # STEP 4: Start Flask without the reloader.
     app.run(
         host="127.0.0.1",
         port=5000,
